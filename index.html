@@ -19,7 +19,7 @@
       <section class="hero">
         <div class="eyebrow">COPILOTO MUSICAL EN TIEMPO REAL</div>
         <h1>Tú tocas.<br><em>La banda te sigue.</em></h1>
-        <p>Escucha tu guitarra durante un minuto, reconoce acordes y modulaciones, y responde con una improvisación de guitarra clásica sobre tu campo armónico.</p>
+        <p>Escucha tu interpretación, reconoce acordes, modulaciones y compás, y responde con una improvisación de piano sincronizada con tu campo armónico.</p>
       </section>
 
       <section class="studio" id="studio">
@@ -47,6 +47,7 @@
       <section class="insights">
         <article><small>TONALIDAD ESTIMADA</small><strong id="keyResult">Esperando audio</strong><span id="confidence">Confianza —</span></article>
         <article><small>ACORDE ACTUAL</small><strong id="currentChord">—</strong><span>Análisis cromático</span></article>
+        <article><small>COMPÁS Y TEMPO</small><strong id="meterResult">—</strong><span id="tempoResult">Esperando pulso</span></article>
         <article><small>NOTAS CAPTURADAS</small><strong id="noteCount">0</strong><span id="topNotes">—</span></article>
       </section>
 
@@ -56,9 +57,10 @@
         <p id="progressionResult">Escuchando…</p>
       </section>
 
-      <section class="how"><div><span>01</span><h3>Escucha</h3><p>Extrae notas y energía armónica desde tu micrófono.</p></div><div><span>02</span><h3>Entiende</h3><p>Reconoce progresiones, centro tonal y modulaciones.</p></div><div><span>03</span><h3>Improvisa</h3><p>Genera guitarra clásica guiada por cada acorde.</p></div></section>
+      <section class="how"><div><span>01</span><h3>Escucha</h3><p>Extrae notas, ataques y energía armónica.</p></div><div><span>02</span><h3>Entiende</h3><p>Reconoce progresión, centro tonal, pulso y compás.</p></div><div><span>03</span><h3>Improvisa</h3><p>Genera piano melódico y armónico sincronizado.</p></div></section>
     </main>
     <footer>MVP experimental · Chrome/Edge recomendados · Usa auriculares</footer>
+    <script src="https://unpkg.com/tone@15.1.22/build/Tone.js"></script>
     <script type="module" src="./src/app.js"></script>
   </body>
 </html>
