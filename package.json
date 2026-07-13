@@ -1,0 +1,14 @@
+{
+  "name": "jam-listener-mvp",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "build": "vite build",
+    "test": "node --test tests/*.test.js"
+  },
+  "devDependencies": {
+    "vite": "^7.0.0"
+  }
+}
