@@ -124,3 +124,39 @@ export function chooseMelodyPitch(chord, key, previousMidi=64) {
   const near=candidates.slice(0,Math.min(5,candidates.length));
   return near[Math.floor(Math.random()*near.length)] ?? previousMidi;
 }
+
+export function estimateMeter(onsets) {
+  if (!onsets || onsets.length < 6) return { numerator: 4, denominator: 4, bpm: 96, confidence: 0, pulseDuration: .625, label: '4/4' };
+  const intervals=[];
+  for(let i=1;i<onsets.length;i++){
+    const delta=onsets[i].time-onsets[i-1].time;
+    if(delta>.18&&delta<1.5)intervals.push(delta);
+  }
+  if(!intervals.length)return { numerator:4,denominator:4,bpm:96,confidence:0,pulseDuration:.625,label:'4/4' };
+  const candidates=[];
+  for(let bpm=60;bpm<=180;bpm++){
+    const beat=60/bpm;let score=0;
+    intervals.forEach(delta=>{const ratio=delta/beat,nearest=Math.max(1,Math.round(ratio));score+=Math.exp(-Math.pow(ratio-nearest,2)*22)/nearest});
+    candidates.push({bpm,beat,score});
+  }
+  candidates.sort((a,b)=>b.score-a.score);let {bpm,beat}=candidates[0];
+  if(bpm>150){bpm=Math.round(bpm/2);beat*=2}
+  const start=onsets[0].time,slots=[];
+  onsets.forEach(onset=>{const slot=Math.round((onset.time-start)/beat);if(!slots[slot])slots[slot]=[];slots[slot].push(onset.strength||1)});
+  const meters=[{n:2,d:4,prior:.96},{n:3,d:4,prior:1.02},{n:4,d:4,prior:1.08},{n:6,d:8,prior:.94}];
+  const scored=meters.map(meter=>{
+    let best=-Infinity;
+    for(let phase=0;phase<meter.n;phase++){
+      const buckets=Array.from({length:meter.n},()=>[]);
+      slots.forEach((values,slot)=>values&&buckets[(slot+phase)%meter.n].push(...values));
+      const means=buckets.map(values=>values.length?values.reduce((a,b)=>a+b,0)/values.length:0);
+      const downbeat=means[0],others=means.slice(1).reduce((a,b)=>a+b,0)/Math.max(1,meter.n-1);
+      const secondary=meter.n===6?(means[3]||0)*.22:0;
+      const coverage=buckets.filter(x=>x.length).length/meter.n;
+      best=Math.max(best,(downbeat-others)*1.8+secondary+coverage*.35+meter.prior);
+    }
+    return {...meter,score:best};
+  }).sort((a,b)=>b.score-a.score);
+  const best=scored[0],margin=Math.max(0,best.score-scored[1].score);
+  return {numerator:best.n,denominator:best.d,bpm,confidence:Math.min(.96,.25+margin*1.7+Math.min(onsets.length/80,.32)),pulseDuration:best.d===8?beat/2:beat,label:`${best.n}/${best.d}`};
+}
