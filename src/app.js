@@ -1,11 +1,11 @@
 import { autoCorrelate, chordPitchClasses, chooseLockedMelodyPitch, detectChord, estimateKey, estimateMeter, frequencyToMidi, mergeChroma, midiToNote, NOTE_NAMES, scaleForKey, spectrumToChroma } from './music.js';
 
 const $=id=>document.getElementById(id);
-const ids=['visualizer','listenState','statusText','liveNote','liveHz','stageNum','stageLabel','stageTitle','timer','progressBar','mainButton','buttonText','demoButton','stopButton','keyResult','confidence','noteCount','topNotes','currentChord','progressionResult','modulationResult','harmonicTimeline','meterResult','tempoResult','tempoSlider','tempoInput','tempoValue'];
+const ids=['visualizer','listenState','statusText','liveNote','liveHz','stageNum','stageLabel','stageTitle','timer','progressBar','mainButton','buttonText','demoButton','stopButton','keyResult','confidence','noteCount','topNotes','currentChord','progressionResult','modulationResult','harmonicTimeline','meterResult','tempoResult','tempoSlider','tempoInput','tempoValue','metronomeButton','metronomeText','metronomeStatus'];
 const ui=Object.fromEntries(ids.map(id=>[id,$(id)]));
 const canvasCtx=ui.visualizer.getContext('2d');
 let audioCtx,analyser,source,stream,raf,countdown,sequenceTimer,metronomeTimer,piano,pianoReverb,metronomeSynth;
-let state='idle',secondsLeft=60,analysisStartedAt=0,sessionTempo=100,lockedKey=null,samples=[],histogram=Array(12).fill(0),chromaFrames=[],progression=[],keyTimeline=[],onsets=[],energyAverage=.01,lastOnsetAt=-1,currentMeter=null,lastCaptured=0,lastHarmonyAt=0,pendingChord=null,pendingKey=null;
+let state='idle',metronomeActive=false,secondsLeft=60,analysisStartedAt=0,sessionTempo=100,lockedKey=null,samples=[],histogram=Array(12).fill(0),chromaFrames=[],progression=[],keyTimeline=[],onsets=[],energyAverage=.01,lastOnsetAt=-1,currentMeter=null,lastCaptured=0,lastHarmonyAt=0,pendingChord=null,pendingKey=null;
 
 function resizeCanvas(){const dpr=devicePixelRatio||1,r=ui.visualizer.getBoundingClientRect();ui.visualizer.width=r.width*dpr;ui.visualizer.height=r.height*dpr;canvasCtx.setTransform(dpr,0,0,dpr,0,0)}
 addEventListener('resize',resizeCanvas);resizeCanvas();
@@ -13,10 +13,10 @@ addEventListener('resize',resizeCanvas);resizeCanvas();
 function resetAnalysis(){samples=[];histogram=Array(12).fill(0);chromaFrames=[];progression=[];keyTimeline=[];onsets=[];energyAverage=.01;lastOnsetAt=-1;currentMeter=null;lockedKey=null;pendingChord=null;pendingKey=null;secondsLeft=60;ui.noteCount.textContent='0';ui.topNotes.textContent='—';ui.keyResult.textContent='Analizando…';ui.confidence.textContent='Confianza —';ui.currentChord.textContent='—';ui.meterResult.textContent='—';ui.tempoResult.textContent=`${sessionTempo} BPM · tempo fijado`;ui.progressionResult.textContent='Escuchando…';ui.modulationResult.textContent='Sin modulación detectada';renderTimeline()}
 
 async function startListening(useDemo=false){
-  stopEverything();sessionTempo=clampTempo(ui.tempoInput.value);resetAnalysis();audioCtx=new(window.AudioContext||window.webkitAudioContext)();await audioCtx.resume();if(window.Tone){await Tone.start();setupPiano();startMetronome()}
+  stopEverything();sessionTempo=clampTempo(ui.tempoInput.value);resetAnalysis();audioCtx=new(window.AudioContext||window.webkitAudioContext)();await audioCtx.resume();if(window.Tone){await Tone.start();setupPiano()}
   analyser=audioCtx.createAnalyser();analyser.fftSize=4096;analyser.smoothingTimeConstant=.35;analyser.minDecibels=-95;analyser.maxDecibels=-15;
   if(!useDemo){try{stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false}});source=audioCtx.createMediaStreamSource(stream);source.connect(analyser)}catch{state='idle';ui.keyResult.textContent='Permiso requerido';ui.statusText.textContent='Activa el micrófono';return}}
-  state='listening';ui.mainButton.disabled=true;ui.demoButton.disabled=true;ui.stopButton.disabled=false;ui.tempoSlider.disabled=true;ui.tempoInput.disabled=true;ui.listenState.classList.add('active');ui.statusText.textContent=useDemo?'Demo con metrónomo':'Metrónomo activo · analizando armonía';ui.buttonText.textContent='Detectando acordes y tonalidad…';
+  startMetronome('recording');state='listening';ui.mainButton.disabled=true;ui.demoButton.disabled=true;ui.stopButton.disabled=false;ui.tempoSlider.disabled=true;ui.tempoInput.disabled=true;ui.metronomeButton.disabled=true;ui.listenState.classList.add('active');ui.statusText.textContent=useDemo?'Demo con metrónomo':'Metrónomo activo · analizando armonía';ui.buttonText.textContent='Detectando acordes y tonalidad…';
   analysisStartedAt=performance.now();countdown=setInterval(()=>{secondsLeft=Math.max(0,60-Math.floor((performance.now()-analysisStartedAt)/1000));updateTimer();if(secondsLeft<=0)beginImprovisation()},250);
   useDemo?startDemoInput():analyzeLoop();
 }
@@ -63,7 +63,7 @@ function renderTimeline(){if(!ui.harmonicTimeline)return;ui.harmonicTimeline.inn
 function updateTimer(){ui.timer.textContent=`00:${String(secondsLeft).padStart(2,'0')}`;ui.progressBar.style.width=`${(60-secondsLeft)/60*100}%`}
 
 function beginImprovisation(){
-  if(state!=='listening')return;clearInterval(countdown);clearInterval(sequenceTimer);clearInterval(metronomeTimer);cancelAnimationFrame(raf);if(stream)stream.getTracks().forEach(t=>t.stop());state='playing';lockedKey=lockSessionKey();const key=lockedKey;if(!progression.length)progression=defaultProgression(key);
+  if(state!=='listening')return;clearInterval(countdown);clearInterval(sequenceTimer);stopMetronome();cancelAnimationFrame(raf);if(stream)stream.getTracks().forEach(t=>t.stop());state='playing';lockedKey=lockSessionKey();const key=lockedKey;if(!progression.length)progression=defaultProgression(key);
   currentMeter={...(currentMeter||estimateMeter(onsets)),bpm:sessionTempo};ui.stageNum.textContent='02';ui.stageLabel.textContent='FASE DE JAM';ui.stageTitle.textContent='Improvisación métrica';ui.timer.textContent='LIVE';ui.progressBar.style.width='100%';ui.statusText.textContent='Tonalidad bloqueada';ui.buttonText.textContent='Improvisando melodía y armonía…';ui.liveNote.textContent=`${key.label} 🔒`;ui.liveHz.textContent=`${currentMeter.label} · ${sessionTempo} BPM · sin notas externas`;ui.keyResult.textContent=`${key.label} 🔒`;startBand(key);ui.stopButton.disabled=false;
 }
 
@@ -74,12 +74,15 @@ function lockSessionKey(){
 }
 
 function clampTempo(value){return Math.max(45,Math.min(180,Math.round(Number(value)||100)))}
-function syncTempo(value){const bpm=clampTempo(value);ui.tempoSlider.value=bpm;ui.tempoInput.value=bpm;ui.tempoValue.textContent=bpm;sessionTempo=bpm}
+function syncTempo(value){const bpm=clampTempo(value);ui.tempoSlider.value=bpm;ui.tempoInput.value=bpm;ui.tempoValue.textContent=bpm;sessionTempo=bpm;if(metronomeActive&&state==='idle')startMetronome('preview')}
 
-function startMetronome(){
-  if(!window.Tone)return;if(!metronomeSynth)metronomeSynth=new Tone.Synth({oscillator:{type:'sine'},envelope:{attack:.001,decay:.035,sustain:0,release:.018},volume:-12}).toDestination();let next=Tone.now()+.12,beat=0,interval=60/sessionTempo;
-  const schedule=()=>{if(state!=='listening'&&state!=='idle')return;while(next<Tone.now()+.12){metronomeSynth.triggerAttackRelease(beat%4===0?'C7':'A6',.025,next,beat%4===0?.82:.55);next+=interval;beat++}};schedule();metronomeTimer=setInterval(schedule,25)
+function startMetronome(mode='preview'){
+  if(!window.Tone){ui.metronomeStatus.textContent='Motor de audio no disponible';return}clearInterval(metronomeTimer);if(!metronomeSynth)metronomeSynth=new Tone.Synth({oscillator:{type:'square8'},envelope:{attack:.001,decay:.065,sustain:0,release:.025},volume:-6}).toDestination();metronomeActive=true;ui.metronomeButton.classList.add('active');ui.metronomeText.textContent=mode==='preview'?'Detener metrónomo':'Metrónomo grabando';ui.metronomeStatus.textContent=`Activo · ${sessionTempo} BPM`;let next=Tone.now()+.08,beat=0,interval=60/sessionTempo;ui.metronomeButton.querySelector('.metro-led').style.animationDuration=`${interval}s`;
+  const schedule=()=>{if(!metronomeActive)return;while(next<Tone.now()+.12){const accent=beat%4===0;metronomeSynth.triggerAttackRelease(accent?'C7':'G6',accent?.065:.045,next,accent?.92:.66);next+=interval;beat++}};schedule();metronomeTimer=setInterval(schedule,25)
 }
+
+function stopMetronome(){clearInterval(metronomeTimer);metronomeActive=false;if(metronomeSynth?.triggerRelease)metronomeSynth.triggerRelease();ui.metronomeButton.classList.remove('active');ui.metronomeText.textContent='Activar metrónomo';ui.metronomeStatus.textContent='Detenido'}
+async function toggleMetronomePreview(){if(state!=='idle')return;if(metronomeActive){stopMetronome();return}if(!window.Tone){ui.metronomeStatus.textContent='Error cargando audio';return}await Tone.start();sessionTempo=clampTempo(ui.tempoInput.value);startMetronome('preview')}
 
 function setupPiano(){
   if(piano||!window.Tone)return;const eq=new Tone.EQ3({low:1.5,mid:-.8,high:1.2,lowFrequency:280,highFrequency:3200});const compressor=new Tone.Compressor({threshold:-18,ratio:2.2,attack:.025,release:.22});pianoReverb=new Tone.Reverb({decay:2.8,preDelay:.022,wet:.19}).toDestination();eq.connect(compressor).connect(pianoReverb);
@@ -106,5 +109,5 @@ function playVoicing(midis,duration,time,velocity){midis.forEach((midi,index)=>p
 function keyForChord(chord,fallback){const nearby=keyTimeline.slice().reverse().find(key=>progression.findIndex(c=>c===chord)>=0&&key.time<=chord.time+3);return nearby||fallback}
 function renderPlayingTimeline(index){if(!ui.harmonicTimeline)return;const visible=progression.slice(0,12);ui.harmonicTimeline.innerHTML=visible.map((chord,i)=>`<span class="chord-chip ${i===index?'active':''}">${chord.label}</span>`).join('')}
 function drawWave(waveform,rms=.05){const w=ui.visualizer.clientWidth,h=ui.visualizer.clientHeight;canvasCtx.clearRect(0,0,w,h);const grad=canvasCtx.createLinearGradient(0,0,w,0);grad.addColorStop(0,'#7357ff');grad.addColorStop(.5,'#32e5bb');grad.addColorStop(1,'#7357ff');canvasCtx.strokeStyle=grad;canvasCtx.lineWidth=2;canvasCtx.beginPath();const count=waveform?waveform.length:180;for(let i=0;i<count;i++){const x=i/(count-1)*w,value=waveform?waveform[i]:Math.sin(i*.23+performance.now()/240)*rms,y=h/2+value*h*.9;i?canvasCtx.lineTo(x,y):canvasCtx.moveTo(x,y)}canvasCtx.stroke()}
-function stopEverything(){clearInterval(countdown);clearInterval(sequenceTimer);clearInterval(metronomeTimer);cancelAnimationFrame(raf);if(stream)stream.getTracks().forEach(t=>t.stop());if(piano?.releaseAll)piano.releaseAll();if(audioCtx&&audioCtx.state!=='closed')audioCtx.close();state='idle';ui.mainButton.disabled=false;ui.demoButton.disabled=false;ui.stopButton.disabled=true;ui.tempoSlider.disabled=false;ui.tempoInput.disabled=false;ui.listenState.classList.remove('active');ui.statusText.textContent='Listo para escuchar';ui.buttonText.textContent='Comenzar a escuchar';ui.stageNum.textContent='01';ui.stageLabel.textContent='FASE DE ESCUCHA';ui.stageTitle.textContent='Aprender tu música'}
-ui.tempoSlider.addEventListener('input',event=>syncTempo(event.target.value));ui.tempoInput.addEventListener('change',event=>syncTempo(event.target.value));syncTempo(100);ui.mainButton.addEventListener('click',()=>startListening(false));ui.demoButton.addEventListener('click',()=>startListening(true));ui.stopButton.addEventListener('click',stopEverything);setInterval(()=>{if(state==='idle')drawWave(null,.035)},40);
+function stopEverything(){clearInterval(countdown);clearInterval(sequenceTimer);stopMetronome();cancelAnimationFrame(raf);if(stream)stream.getTracks().forEach(t=>t.stop());if(piano?.releaseAll)piano.releaseAll();if(audioCtx&&audioCtx.state!=='closed')audioCtx.close();state='idle';ui.mainButton.disabled=false;ui.demoButton.disabled=false;ui.stopButton.disabled=true;ui.tempoSlider.disabled=false;ui.tempoInput.disabled=false;ui.metronomeButton.disabled=false;ui.listenState.classList.remove('active');ui.statusText.textContent='Listo para escuchar';ui.buttonText.textContent='Comenzar a escuchar';ui.stageNum.textContent='01';ui.stageLabel.textContent='FASE DE ESCUCHA';ui.stageTitle.textContent='Aprender tu música'}
+ui.tempoSlider.addEventListener('input',event=>syncTempo(event.target.value));ui.tempoInput.addEventListener('change',event=>syncTempo(event.target.value));ui.metronomeButton.addEventListener('click',toggleMetronomePreview);syncTempo(100);ui.mainButton.addEventListener('click',()=>startListening(false));ui.demoButton.addEventListener('click',()=>startListening(true));ui.stopButton.addEventListener('click',stopEverything);setInterval(()=>{if(state==='idle')drawWave(null,.035)},40);
