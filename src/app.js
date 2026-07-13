@@ -1,11 +1,11 @@
-import { autoCorrelate, chordPitchClasses, chooseLockedMelodyPitch, detectChord, estimateKey, estimateMeter, frequencyToMidi, mergeChroma, midiToNote, NOTE_NAMES, scaleForKey, spectrumToChroma } from './music.js';
+import { autoCorrelate, chordPitchClasses, detectChord, estimateKey, estimateMeter, frequencyToMidi, mergeChroma, midiToNote, NOTE_NAMES, scaleForKey, spectrumToChroma } from './music.js';
 
 const $=id=>document.getElementById(id);
 const ids=['visualizer','listenState','statusText','liveNote','liveHz','stageNum','stageLabel','stageTitle','timer','progressBar','mainButton','buttonText','demoButton','stopButton','keyResult','confidence','noteCount','topNotes','currentChord','progressionResult','modulationResult','harmonicTimeline','meterResult','tempoResult','tempoSlider','tempoInput','tempoValue','metronomeButton','metronomeText','metronomeStatus'];
 const ui=Object.fromEntries(ids.map(id=>[id,$(id)]));
 const canvasCtx=ui.visualizer.getContext('2d');
 let audioCtx,analyser,source,stream,raf,countdown,sequenceTimer,metronomeTimer,piano,pianoReverb,metronomeSynth;
-let state='idle',metronomeActive=false,secondsLeft=60,analysisStartedAt=0,sessionTempo=100,lockedKey=null,samples=[],histogram=Array(12).fill(0),chromaFrames=[],progression=[],keyTimeline=[],onsets=[],energyAverage=.01,lastOnsetAt=-1,currentMeter=null,lastCaptured=0,lastHarmonyAt=0,pendingChord=null,pendingKey=null;
+let state='idle',metronomeActive=false,secondsLeft=60,analysisStartedAt=0,sessionTempo=100,lockedKey=null,improvState=null,previousHarmonyVoicing=[],samples=[],histogram=Array(12).fill(0),chromaFrames=[],progression=[],keyTimeline=[],onsets=[],energyAverage=.01,lastOnsetAt=-1,currentMeter=null,lastCaptured=0,lastHarmonyAt=0,pendingChord=null,pendingKey=null;
 
 function resizeCanvas(){const dpr=devicePixelRatio||1,r=ui.visualizer.getBoundingClientRect();ui.visualizer.width=r.width*dpr;ui.visualizer.height=r.height*dpr;canvasCtx.setTransform(dpr,0,0,dpr,0,0)}
 addEventListener('resize',resizeCanvas);resizeCanvas();
@@ -16,7 +16,7 @@ async function startListening(useDemo=false){
   stopEverything();sessionTempo=clampTempo(ui.tempoInput.value);resetAnalysis();audioCtx=new(window.AudioContext||window.webkitAudioContext)();await audioCtx.resume();if(window.Tone){await Tone.start();setupPiano()}
   analyser=audioCtx.createAnalyser();analyser.fftSize=4096;analyser.smoothingTimeConstant=.35;analyser.minDecibels=-95;analyser.maxDecibels=-15;
   if(!useDemo){try{stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false}});source=audioCtx.createMediaStreamSource(stream);source.connect(analyser)}catch{state='idle';ui.keyResult.textContent='Permiso requerido';ui.statusText.textContent='Activa el micrófono';return}}
-  startMetronome('recording');state='listening';ui.mainButton.disabled=true;ui.demoButton.disabled=true;ui.stopButton.disabled=false;ui.tempoSlider.disabled=true;ui.tempoInput.disabled=true;ui.metronomeButton.disabled=true;ui.listenState.classList.add('active');ui.statusText.textContent=useDemo?'Demo con metrónomo':'Metrónomo activo · analizando armonía';ui.buttonText.textContent='Detectando acordes y tonalidad…';
+  state='listening';ui.mainButton.disabled=true;ui.demoButton.disabled=true;ui.stopButton.disabled=false;ui.tempoSlider.disabled=true;ui.tempoInput.disabled=true;ui.metronomeButton.disabled=true;ui.metronomeStatus.textContent='Silenciado durante grabación';ui.listenState.classList.add('active');ui.statusText.textContent=useDemo?'Demo sin metrónomo':'Grabando sin metrónomo · analizando armonía';ui.buttonText.textContent='Detectando todas las notas y acordes…';
   analysisStartedAt=performance.now();countdown=setInterval(()=>{secondsLeft=Math.max(0,60-Math.floor((performance.now()-analysisStartedAt)/1000));updateTimer();if(secondsLeft<=0)beginImprovisation()},250);
   useDemo?startDemoInput():analyzeLoop();
 }
@@ -64,13 +64,27 @@ function updateTimer(){ui.timer.textContent=`00:${String(secondsLeft).padStart(2
 
 function beginImprovisation(){
   if(state!=='listening')return;clearInterval(countdown);clearInterval(sequenceTimer);stopMetronome();cancelAnimationFrame(raf);if(stream)stream.getTracks().forEach(t=>t.stop());state='playing';lockedKey=lockSessionKey();const key=lockedKey;if(!progression.length)progression=defaultProgression(key);
-  currentMeter={...(currentMeter||estimateMeter(onsets)),bpm:sessionTempo};ui.stageNum.textContent='02';ui.stageLabel.textContent='FASE DE JAM';ui.stageTitle.textContent='Improvisación métrica';ui.timer.textContent='LIVE';ui.progressBar.style.width='100%';ui.statusText.textContent='Tonalidad bloqueada';ui.buttonText.textContent='Improvisando melodía y armonía…';ui.liveNote.textContent=`${key.label} 🔒`;ui.liveHz.textContent=`${currentMeter.label} · ${sessionTempo} BPM · sin notas externas`;ui.keyResult.textContent=`${key.label} 🔒`;startBand(key);ui.stopButton.disabled=false;
+  currentMeter={...(currentMeter||estimateMeter(onsets)),bpm:sessionTempo};improvState=createImproviser(key);previousHarmonyVoicing=[];ui.stageNum.textContent='02';ui.stageLabel.textContent='FASE DE JAM';ui.stageTitle.textContent='Improvisación por motivos';ui.timer.textContent='LIVE';ui.progressBar.style.width='100%';ui.statusText.textContent='Tonalidad bloqueada · frases generativas';ui.buttonText.textContent='Desarrollando motivos y armonía…';ui.liveNote.textContent=`${key.label} 🔒`;ui.liveHz.textContent=`${currentMeter.label} · ${sessionTempo} BPM · sin notas externas`;ui.keyResult.textContent=`${key.label} 🔒`;startBand(key);ui.stopButton.disabled=false;
 }
 
 function defaultProgression(key){const degrees=key.mode==='minor'?[0,5,3,7]:[0,7,9,5];return degrees.map(root=>({root:(key.root+root)%12,quality:root===9?'min':'maj',suffix:root===9?'m':'',intervals:root===9?[0,3,7]:[0,4,7],label:`${NOTE_NAMES[(key.root+root)%12]}${root===9?'m':''}`}))}
 
 function lockSessionKey(){
   const evidence=histogram.slice();progression.forEach(chord=>chordPitchClasses(chord).forEach((pc,index)=>evidence[pc]+=index?1.2:1.8));keyTimeline.forEach(key=>{evidence[key.root]+=Math.max(.5,key.confidence*3)});return estimateKey(evidence)
+}
+
+function createImproviser(key){
+  const melodic=[];for(const sample of samples){const last=melodic.at(-1);if(!last||last.pc!==sample.pc)melodic.push(sample)}const intervals=[];for(let i=1;i<melodic.length;i++){let delta=melodic[i].midi-melodic[i-1].midi;while(delta>6)delta-=12;while(delta<-6)delta+=12;if(delta)intervals.push(Math.sign(delta)*Math.max(1,Math.min(4,Math.round(Math.abs(delta)/2))))}
+  const motif=(intervals.length?intervals:[1,2,-1,-2,3,-2]).slice(0,6);return {motif,rhythmOffset:Math.floor(Math.random()*4),density:.58+Math.random()*.2,lastMidi:nearestScaleMidi(64,key),recent:[],phraseBars:4}
+}
+
+function nearestScaleMidi(midi,key){const scale=scaleForKey(key.root,key.mode);for(let distance=0;distance<12;distance++)for(const candidate of [midi+distance,midi-distance])if(scale.includes(((candidate%12)+12)%12))return candidate;return midi}
+function moveDiatonic(midi,steps,key){const scale=scaleForKey(key.root,key.mode),pool=[];for(let note=48;note<=84;note++)if(scale.includes(note%12))pool.push(note);let index=pool.reduce((best,_,i)=>Math.abs(pool[i]-midi)<Math.abs(pool[best]-midi)?i:best,0);return pool[Math.max(0,Math.min(pool.length-1,index+steps))]}
+function nearestGuideTone(chord,key,previous){const scale=scaleForKey(key.root,key.mode),tones=chordPitchClasses(chord).filter(pc=>scale.includes(pc)),pool=[];for(let midi=55;midi<=79;midi++)if(tones.includes(midi%12))pool.push(midi);if(!pool.length)return nearestScaleMidi(previous,key);return pool.sort((a,b)=>Math.abs(a-previous)-Math.abs(b-previous))[Math.random()<.72?0:Math.min(1,pool.length-1)]}
+function melodyPattern(stepsPerBar,bar){const patterns=stepsPerBar<=6?[[1,0,1,1,0,1],[1,1,0,1,0,1],[0,1,1,0,1,1],[1,0,0,1,1,0]]:[[1,0,1,1,0,1,0,1],[1,1,0,1,0,0,1,1],[0,1,1,0,1,1,0,1],[1,0,0,1,1,0,1,0]];return patterns[(bar+improvState.rhythmOffset)%patterns.length]}
+function nextPhraseNote(chord,key,position,stepsPerBar,bar){
+  const strong=position===0||position===Math.floor(stepsPerBar/2),cadence=bar%improvState.phraseBars===improvState.phraseBars-1&&position>=stepsPerBar-2;let midi;if(cadence){const tonicCandidates=[];for(let n=55;n<=79;n++)if(n%12===key.root)tonicCandidates.push(n);midi=tonicCandidates.sort((a,b)=>Math.abs(a-improvState.lastMidi)-Math.abs(b-improvState.lastMidi))[0]}else if(strong){midi=nearestGuideTone(chord,key,improvState.lastMidi)}else{const phrase=bar%4,source=phrase===2?[...improvState.motif].reverse():improvState.motif,raw=source[position%source.length],step=phrase===1?-raw:raw;midi=moveDiatonic(improvState.lastMidi,step+(phrase===3&&position%3===0?1:0),key)}
+  if(improvState.recent.slice(-2).every(note=>note===midi))midi=moveDiatonic(midi,bar%2?1:-1,key);improvState.lastMidi=midi;improvState.recent.push(midi);return midi
 }
 
 function clampTempo(value){return Math.max(45,Math.min(180,Math.round(Number(value)||100)))}
@@ -85,8 +99,8 @@ function stopMetronome(){clearInterval(metronomeTimer);metronomeActive=false;if(
 async function toggleMetronomePreview(){if(state!=='idle')return;if(metronomeActive){stopMetronome();return}if(!window.Tone){ui.metronomeStatus.textContent='Error cargando audio';return}await Tone.start();sessionTempo=clampTempo(ui.tempoInput.value);startMetronome('preview')}
 
 function setupPiano(){
-  if(piano||!window.Tone)return;const eq=new Tone.EQ3({low:1.5,mid:-.8,high:1.2,lowFrequency:280,highFrequency:3200});const compressor=new Tone.Compressor({threshold:-18,ratio:2.2,attack:.025,release:.22});pianoReverb=new Tone.Reverb({decay:2.8,preDelay:.022,wet:.19}).toDestination();eq.connect(compressor).connect(pianoReverb);
-  piano=new Tone.Sampler({urls:{A0:'A0.mp3',C1:'C1.mp3','D#1':'Ds1.mp3','F#1':'Fs1.mp3',A1:'A1.mp3',C2:'C2.mp3','D#2':'Ds2.mp3','F#2':'Fs2.mp3',A2:'A2.mp3',C3:'C3.mp3','D#3':'Ds3.mp3','F#3':'Fs3.mp3',A3:'A3.mp3',C4:'C4.mp3','D#4':'Ds4.mp3','F#4':'Fs4.mp3',A4:'A4.mp3',C5:'C5.mp3','D#5':'Ds5.mp3','F#5':'Fs5.mp3',A5:'A5.mp3',C6:'C6.mp3'},release:1.65,baseUrl:'https://tonejs.github.io/audio/salamander/'}).connect(eq);
+  if(piano||!window.Tone)return;const eq=new Tone.EQ3({low:0,mid:-1.2,high:.35,lowFrequency:260,highFrequency:3600});const compressor=new Tone.Compressor({threshold:-15,ratio:3,attack:.035,release:.28});const headroom=new Tone.Volume(-8);pianoReverb=new Tone.Reverb({decay:2.25,preDelay:.018,wet:.14});const limiter=new Tone.Limiter(-3).toDestination();eq.connect(compressor).connect(headroom).connect(pianoReverb).connect(limiter);
+  piano=new Tone.Sampler({urls:{A0:'A0.mp3',C1:'C1.mp3','D#1':'Ds1.mp3','F#1':'Fs1.mp3',A1:'A1.mp3',C2:'C2.mp3','D#2':'Ds2.mp3','F#2':'Fs2.mp3',A2:'A2.mp3',C3:'C3.mp3','D#3':'Ds3.mp3','F#3':'Fs3.mp3',A3:'A3.mp3',C4:'C4.mp3','D#4':'Ds4.mp3','F#4':'Fs4.mp3',A4:'A4.mp3',C5:'C5.mp3','D#5':'Ds5.mp3','F#5':'Fs5.mp3',A5:'A5.mp3',C6:'C6.mp3'},release:.95,baseUrl:'https://tonejs.github.io/audio/salamander/'}).connect(eq);
 }
 
 function startBand(initialKey){
@@ -97,12 +111,13 @@ function startBand(initialKey){
 }
 
 function schedulePianoStep(chord,key,position,stepsPerBar,time,previousMidi,bar){
-  const strong=position===0,quarterBeat=position%2===0,phrase=Math.sin((bar%8)/8*Math.PI),dynamic=.86+phrase*.12+(Math.random()-.5)*.05;if(strong){const root=snapToScale(chord.root,key),bass=36+root+(root<4?12:0);playPiano([bass],2.1,time+.014,.66*dynamic);playVoicing(pianoVoicing(chord,key),Math.max(1.5,(60/sessionTempo)*1.8),time+.022,.53*dynamic)}else if(quarterBeat&&currentMeter.numerator>2){playVoicing(pianoVoicing(chord,key).slice(1),.78,time+.012,.27*dynamic)}
-  if(strong||quarterBeat||Math.random()>.3){const target=chooseLockedMelodyPitch(chord,key,previousMidi,strong);playPiano([target],quarterBeat?.5:.3,time+.004+(Math.random()-.5)*.008,(strong?.68:.46)*dynamic);return target}return previousMidi
+  const strong=position===0,quarterBeat=position%2===0,phrase=Math.sin((bar%8)/8*Math.PI),dynamic=.78+phrase*.1+(Math.random()-.5)*.04,style=(bar+improvState.rhythmOffset)%3;if(strong){const root=snapToScale(chord.root,key),bass=36+root+(root<4?12:0),voicing=voiceLeadVoicing(chord,key);playPiano([bass],1.25,time+.012,.42*dynamic);playVoicing(voicing,.92,time+.024,.34*dynamic)}else if(style===1&&quarterBeat){const note=previousHarmonyVoicing[(position/2)%previousHarmonyVoicing.length|0];if(note)playPiano([note],.38,time+.018,.18*dynamic)}else if(style===2&&position%2===1){const note=previousHarmonyVoicing[position%previousHarmonyVoicing.length];if(note)playPiano([note],.3,time+.012,.15*dynamic)}
+  const pattern=melodyPattern(stepsPerBar,bar),play=pattern[position%pattern.length]&&(strong||Math.random()<improvState.density);if(play){const target=nextPhraseNote(chord,key,position,stepsPerBar,bar);playPiano([target],strong?.48:.28,time+.003+(Math.random()-.5)*.006,(strong?.46:.32)*dynamic);return target}return previousMidi
 }
 
 function snapToScale(pc,key){const scale=scaleForKey(key.root,key.mode);if(scale.includes(pc))return pc;return scale.slice().sort((a,b)=>Math.min((a-pc+12)%12,(pc-a+12)%12)-Math.min((b-pc+12)%12,(pc-b+12)%12))[0]}
-function pianoVoicing(chord,key){const scale=scaleForKey(key.root,key.mode),root=snapToScale(chord.root,key),base=48+root,tones=chordPitchClasses(chord).filter(pc=>scale.includes(pc));for(const pc of scale)if(tones.length<4&&!tones.includes(pc))tones.push(pc);return tones.slice(0,4).map((pc,index)=>base+(pc-root+12)%12+(index>1?12:0))}
+function pianoVoicing(chord,key){const scale=scaleForKey(key.root,key.mode),root=snapToScale(chord.root,key),tones=chordPitchClasses(chord).filter(pc=>scale.includes(pc));for(const pc of scale)if(tones.length<4&&!tones.includes(pc))tones.push(pc);return tones.slice(0,4).map((pc,index)=>48+root+(pc-root+12)%12+(index>1?12:0))}
+function voiceLeadVoicing(chord,key){const pcs=pianoVoicing(chord,key).map(midi=>midi%12);if(!previousHarmonyVoicing.length){previousHarmonyVoicing=pianoVoicing(chord,key);return previousHarmonyVoicing}const next=pcs.map((pc,index)=>{const options=[];for(let midi=45;midi<=72;midi++)if(midi%12===pc)options.push(midi);const target=previousHarmonyVoicing[Math.min(index,previousHarmonyVoicing.length-1)];return options.sort((a,b)=>Math.abs(a-target)-Math.abs(b-target))[0]});next.sort((a,b)=>a-b);previousHarmonyVoicing=next;return next}
 function midiName(midi){const names=['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];return `${names[((midi%12)+12)%12]}${Math.floor(midi/12)-1}`}
 function playPiano(midis,duration,time,velocity){piano.triggerAttackRelease(midis.map(midiName),duration,time,velocity)}
 function playVoicing(midis,duration,time,velocity){midis.forEach((midi,index)=>playPiano([midi],duration,time+index*.009,velocity*(1-index*.045)))}
