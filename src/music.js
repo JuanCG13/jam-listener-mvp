@@ -51,3 +51,76 @@ export function scaleForKey(root, mode) {
   const pattern = mode === 'minor' ? [0,2,3,5,7,8,10] : [0,2,4,5,7,9,11];
   return pattern.map(x => (root + x) % 12);
 }
+
+const CHORD_TYPES = [
+  { quality: 'maj', suffix: '', intervals: [0,4,7] },
+  { quality: 'min', suffix: 'm', intervals: [0,3,7] },
+  { quality: '7', suffix: '7', intervals: [0,4,7,10] },
+  { quality: 'maj7', suffix: 'maj7', intervals: [0,4,7,11] },
+  { quality: 'min7', suffix: 'm7', intervals: [0,3,7,10] },
+  { quality: 'dim', suffix: '°', intervals: [0,3,6] },
+  { quality: 'sus4', suffix: 'sus4', intervals: [0,5,7] },
+];
+
+export function spectrumToChroma(frequencyData, sampleRate, fftSize) {
+  const chroma = Array(12).fill(0);
+  const binHz = sampleRate / fftSize;
+  for (let bin = 1; bin < frequencyData.length; bin++) {
+    const frequency = bin * binHz;
+    if (frequency < 70 || frequency > 1500) continue;
+    const db = frequencyData[bin];
+    if (!Number.isFinite(db) || db < -82) continue;
+    const midi = frequencyToMidi(frequency);
+    const nearest = Math.round(midi);
+    const centsDistance = Math.abs(midi - nearest);
+    const pitchClass = ((nearest % 12) + 12) % 12;
+    const magnitude = Math.pow(10, (db + 82) / 28);
+    const tuningWeight = Math.exp(-centsDistance * centsDistance * 9);
+    const frequencyWeight = 1 / Math.sqrt(Math.max(1, frequency / 220));
+    chroma[pitchClass] += magnitude * tuningWeight * frequencyWeight;
+  }
+  const sum = chroma.reduce((a,b) => a+b, 0);
+  return sum ? chroma.map(value => value / sum) : chroma;
+}
+
+export function detectChord(chroma) {
+  const energy = chroma.reduce((a,b) => a+b, 0);
+  if (!energy) return { label: '—', root: 0, quality: 'maj', confidence: 0, intervals: [0,4,7] };
+  const candidates = [];
+  for (let root=0; root<12; root++) {
+    for (const type of CHORD_TYPES) {
+      const tones = new Set(type.intervals.map(interval => (root+interval)%12));
+      let inside=0, outside=0;
+      chroma.forEach((value,pc) => tones.has(pc) ? inside += value : outside += value);
+      const rootBonus = chroma[root] * .22;
+      const complexityPenalty = Math.max(0,type.intervals.length-3)*.025;
+      candidates.push({root,...type,score:inside-outside*.58+rootBonus-complexityPenalty});
+    }
+  }
+  candidates.sort((a,b)=>b.score-a.score);
+  const best=candidates[0], second=candidates[1];
+  const confidence=Math.max(0,Math.min(.99,(best.score-second.score)*3.2+best.score*.36));
+  return {...best,confidence,label:`${NOTE_NAMES[best.root]}${best.suffix}`};
+}
+
+export function chordPitchClasses(chord) {
+  return chord.intervals.map(interval => (chord.root+interval)%12);
+}
+
+export function mergeChroma(frames) {
+  const merged=Array(12).fill(0);
+  frames.forEach(frame=>frame.forEach((value,i)=>merged[i]+=value));
+  const sum=merged.reduce((a,b)=>a+b,0);
+  return sum ? merged.map(value=>value/sum) : merged;
+}
+
+export function chooseMelodyPitch(chord, key, previousMidi=64) {
+  const chordTones=chordPitchClasses(chord);
+  const scale=scaleForKey(key.root,key.mode);
+  const targetPool=Math.random()<.68?chordTones:scale;
+  const candidates=[];
+  for(let midi=52;midi<=76;midi++) if(targetPool.includes(midi%12)) candidates.push(midi);
+  candidates.sort((a,b)=>Math.abs(a-previousMidi)-Math.abs(b-previousMidi));
+  const near=candidates.slice(0,Math.min(5,candidates.length));
+  return near[Math.floor(Math.random()*near.length)] ?? previousMidi;
+}
