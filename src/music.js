@@ -125,6 +125,15 @@ export function chooseMelodyPitch(chord, key, previousMidi=64) {
   return near[Math.floor(Math.random()*near.length)] ?? previousMidi;
 }
 
+export function chooseLockedMelodyPitch(chord,key,previousMidi=64,strongBeat=false){
+  const scale=scaleForKey(key.root,key.mode),chordTones=chordPitchClasses(chord).filter(pc=>scale.includes(pc));
+  const pool=strongBeat&&chordTones.length?chordTones:scale,candidates=[];
+  for(let midi=55;midi<=79;midi++)if(pool.includes(((midi%12)+12)%12))candidates.push(midi);
+  candidates.sort((a,b)=>Math.abs(a-previousMidi)-Math.abs(b-previousMidi));
+  const limit=strongBeat?3:5,near=candidates.slice(0,Math.min(limit,candidates.length));
+  return near[Math.floor(Math.random()*near.length)]??previousMidi;
+}
+
 export function estimateMeter(onsets) {
   if (!onsets || onsets.length < 6) return { numerator: 4, denominator: 4, bpm: 96, confidence: 0, pulseDuration: .625, label: '4/4' };
   const intervals=[];
