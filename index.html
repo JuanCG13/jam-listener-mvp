@@ -11,6 +11,7 @@
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="./src/style.css" />
     <link rel="stylesheet" href="./src/harmonic.css" />
+    <link rel="stylesheet" href="./src/session.css" />
   </head>
   <body>
     <main>
@@ -35,6 +36,11 @@
             <time id="timer">01:00</time>
           </div>
           <div class="progress"><span id="progressBar"></span></div>
+          <div class="tempo-control">
+            <div><small>TEMPO DE LA SESIÓN</small><strong><span id="tempoValue">100</span> BPM</strong></div>
+            <input id="tempoSlider" type="range" min="45" max="180" value="100" step="1" aria-label="Tempo en BPM">
+            <input id="tempoInput" type="number" min="45" max="180" value="100" inputmode="numeric" aria-label="Tempo exacto">
+          </div>
           <button id="mainButton"><span id="buttonIcon">●</span><span id="buttonText">Comenzar a escuchar</span></button>
           <div class="secondary-actions">
             <button id="demoButton" class="ghost">Probar demo automática</button>
