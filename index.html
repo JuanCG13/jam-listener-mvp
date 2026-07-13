@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#080b12" />
+    <meta name="description" content="Escucha tu guitarra, aprende la tonalidad e improvisa contigo." />
+    <title>JamListener — improvisación musical</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <main>
+      <nav><a class="brand" href="#"><span class="brand-mark">J</span> JamListener <b>MVP</b></a><span class="privacy"><i></i> Audio local · no se graba</span></nav>
+
+      <section class="hero">
+        <div class="eyebrow">COPILOTO MUSICAL EN TIEMPO REAL</div>
+        <h1>Tú tocas.<br><em>La banda te sigue.</em></h1>
+        <p>Escucha tu guitarra durante un minuto, entiende la tonalidad y continúa la sesión improvisando un acompañamiento original.</p>
+      </section>
+
+      <section class="studio" id="studio">
+        <div class="visualizer-wrap">
+          <canvas id="visualizer"></canvas>
+          <div class="listen-state" id="listenState"><span class="pulse"></span><span id="statusText">Listo para escuchar</span></div>
+          <div class="center-note"><small>NOTA DETECTADA</small><strong id="liveNote">—</strong><span id="liveHz">Conecta tu instrumento o usa el micrófono</span></div>
+        </div>
+
+        <div class="control-panel">
+          <div class="timer-row">
+            <div><span class="stage-num" id="stageNum">01</span><div><small id="stageLabel">FASE DE ESCUCHA</small><strong id="stageTitle">Aprender tu música</strong></div></div>
+            <time id="timer">01:00</time>
+          </div>
+          <div class="progress"><span id="progressBar"></span></div>
+          <button id="mainButton"><span id="buttonIcon">●</span><span id="buttonText">Comenzar a escuchar</span></button>
+          <div class="secondary-actions">
+            <button id="demoButton" class="ghost">Probar demo automática</button>
+            <button id="stopButton" class="ghost" disabled>Detener</button>
+          </div>
+          <p class="hint">Consejo: toca acordes y frases claras, a un volumen estable. Los auriculares evitan que el acompañamiento vuelva a entrar por el micrófono.</p>
+        </div>
+      </section>
+
+      <section class="insights">
+        <article><small>TONALIDAD ESTIMADA</small><strong id="keyResult">Esperando audio</strong><span id="confidence">Confianza —</span></article>
+        <article><small>NOTAS CAPTURADAS</small><strong id="noteCount">0</strong><span id="topNotes">—</span></article>
+        <article><small>PULSO</small><strong id="tempoResult">Libre</strong><span>Improvisación adaptable</span></article>
+      </section>
+
+      <section class="how"><div><span>01</span><h3>Escucha</h3><p>Analiza frecuencia y energía desde tu micrófono.</p></div><div><span>02</span><h3>Entiende</h3><p>Estima centro tonal, modo y acordes probables.</p></div><div><span>03</span><h3>Improvisa</h3><p>Genera una banda sintética en la misma escala.</p></div></section>
+    </main>
+    <footer>MVP experimental · Chrome/Edge recomendados · Usa auriculares</footer>
+    <script type="module" src="/src/app.js"></script>
+  </body>
+</html>
