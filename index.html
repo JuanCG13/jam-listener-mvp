@@ -12,6 +12,7 @@
     <link rel="stylesheet" href="./src/style.css" />
     <link rel="stylesheet" href="./src/harmonic.css" />
     <link rel="stylesheet" href="./src/session.css" />
+    <link rel="stylesheet" href="./src/art.css" />
   </head>
   <body>
     <main>
@@ -65,7 +66,24 @@
         <p id="progressionResult">Escuchando…</p>
       </section>
 
-      <section class="how"><div><span>01</span><h3>Escucha</h3><p>Extrae notas, ataques y energía armónica.</p></div><div><span>02</span><h3>Entiende</h3><p>Reconoce progresión, centro tonal, pulso y compás.</p></div><div><span>03</span><h3>Improvisa</h3><p>Genera piano melódico y armónico sincronizado.</p></div></section>
+      <section class="sound-canvas">
+        <div class="art-copy">
+          <div><small>LIENZO SINESTÉSICO</small><h2>La música también deja huella.</h2></div>
+          <p>Cada altura elige un color, cada dinámica define el trazo y cada acorde hace florecer una nueva forma.</p>
+          <div class="art-readout"><span class="art-live-dot"></span><div><small id="artStatus">ESPERANDO MÚSICA</small><strong id="artNote">Tu interpretación aparecerá aquí</strong></div></div>
+          <div class="palette" id="artPalette"><i></i><i></i><i></i><i></i><i></i><i></i></div>
+          <button id="clearArtButton" class="clear-art" type="button">Limpiar lienzo</button>
+        </div>
+        <div class="canvas-frame">
+          <div class="frame-glow"></div>
+          <canvas id="artCanvas" width="1200" height="650"></canvas>
+          <div class="brush-cursor" id="brushCursor"><span class="brush-handle"></span><span class="brush-ferrule"></span><span class="brush-tip"></span></div>
+          <div class="canvas-grain"></div>
+          <span class="canvas-label">JAML/01 · AUDIO PAINTING</span>
+        </div>
+      </section>
+
+      <section class="how"><div><span>01</span><h3>Escucha</h3><p>Extrae notas, ataques y energía armónica.</p></div><div><span>02</span><h3>Interpreta</h3><p>Reconoce armonía y convierte el sonido en trazos.</p></div><div><span>03</span><h3>Crea</h3><p>Genera una pintura y una improvisación irrepetibles.</p></div></section>
     </main>
     <footer>MVP experimental · Chrome/Edge recomendados · Usa auriculares</footer>
     <script src="https://unpkg.com/tone@15.1.22/build/Tone.js"></script>
