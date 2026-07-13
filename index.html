@@ -40,6 +40,8 @@
             <div><small>TEMPO DE LA SESIÓN</small><strong><span id="tempoValue">100</span> BPM</strong></div>
             <input id="tempoSlider" type="range" min="45" max="180" value="100" step="1" aria-label="Tempo en BPM">
             <input id="tempoInput" type="number" min="45" max="180" value="100" inputmode="numeric" aria-label="Tempo exacto">
+            <button id="metronomeButton" class="metronome-button" type="button"><span class="metro-led"></span><span id="metronomeText">Activar metrónomo</span></button>
+            <span id="metronomeStatus" class="metronome-status">Detenido</span>
           </div>
           <button id="mainButton"><span id="buttonIcon">●</span><span id="buttonText">Comenzar a escuchar</span></button>
           <div class="secondary-actions">
